@@ -153,6 +153,7 @@ public class Reader extends Application {
         AnchorPane.setRightAnchor(chart, 10.0);
         chart.setStyle("-fx-background-color: #769FC9");
         chart.setLegendVisible(false);
+        chart.setAnimated(false);
 
         centerPane.getChildren().add(chart);
         rootLayout.setCenter(centerPane);
