@@ -5,7 +5,6 @@ import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Calendar;
 import java.util.Map;
@@ -17,9 +16,9 @@ import java.util.logging.Logger;
 import static logreader.LogReader.getShort;
 
 /**
- * Created by karltrout on 5/10/17.
- * This class is ment to parse a single HADDS log file and write it to a text file.
- * The new format is single line per message ascii file, space delimited key value pairs seperated by a ':'.
+ * Created by karl trout on 5/10/17.
+ * This class is meant to parse a single HADDS log file and write it to a text file.
+ * The new format is single line per message ascii file, space delimited key value pairs separated by a ':'.
  */
 public class HaddsLogFileParser implements Runnable {
 
@@ -32,30 +31,33 @@ public class HaddsLogFileParser implements Runnable {
     private boolean notTesting = true;
     private Map<Integer, Message> messages = new TreeMap<>();
 
-    private Path outDiretory = Paths.get("/Users/karltrout/Documents/Resources/text/HADDS/");
+    private Path outDirectory = null;
 
     /**
      * @param aFilePath the HADDS log file to parse
      * @throws IOException if the File to read or to write is not available a IOException is thrown.
      */
-    HaddsLogFileParser(Path aFilePath) throws IOException {
+    HaddsLogFileParser(Path aFilePath,  Path outputDirectory) throws IOException {
         this.path = aFilePath;
+        this.outDirectory = outputDirectory;
         setOutputFile();
     }
 
-    HaddsLogFileParser(Path aFilePath, AtomicLong counter, AtomicInteger filesRead) throws IOException {
-        this.path = aFilePath;
+    HaddsLogFileParser(Path fileToParse, Path outputDirectory, AtomicLong counter, AtomicInteger filesRead) throws IOException {
+        this.path = fileToParse;
+        this.outDirectory = outputDirectory;
         this.filesCounter = filesRead;
         this.counter = counter;
         setOutputFile();
     }
 
     private void setOutputFile() throws IOException {
+        if(outDirectory == null) throw new IOException("Please Set a Directory for Output");
         String outFileName = this.path.getFileName().toString().replace(".log", "_flat.txt");
-        if (Files.notExists(outDiretory)){
-            Files.createDirectories(outDiretory);
+        if (Files.notExists(outDirectory)){
+            Files.createDirectories(outDirectory);
         }
-        this.outPath=this.outDiretory.resolve(outFileName);
+        this.outPath=this.outDirectory.resolve(outFileName);
     }
 
     @Override
@@ -203,4 +205,5 @@ public class HaddsLogFileParser implements Runnable {
     public void setTesting(boolean testing) {
         notTesting = !testing;
     }
+
 }

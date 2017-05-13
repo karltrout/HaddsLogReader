@@ -34,6 +34,7 @@ import static java.util.stream.Collectors.toList;
  */
 public class LogReader {
 
+    private static final Path outDirectory = Paths.get("/Users/karltrout/Documents/Resources/text/HADDS/");
     /**
      * @param args the command line arguments
      */
@@ -77,12 +78,11 @@ public class LogReader {
 
         try {
 
-            Thread t = new Thread(new HaddsLogFileParser(aFilePath));
+            Thread t = new Thread(new HaddsLogFileParser(aFilePath, outDirectory));
             t.run();
 
         } catch (IOException e) {
             System.out.println("error Accessing File : Error -> "+e.getMessage());
-            //e.printStackTrace();
         }
 
         long stopTime = Calendar.getInstance().getTimeInMillis();
@@ -103,7 +103,7 @@ public class LogReader {
 
             try {
 
-                HaddsLogFileParser hLogParser = new HaddsLogFileParser(p, totalBytes, totalFilesRead);
+                HaddsLogFileParser hLogParser = new HaddsLogFileParser(p,outDirectory, totalBytes, totalFilesRead);
                 hLogParser.setTesting(true);
                 futures.add(executorService.submit(hLogParser));
 
