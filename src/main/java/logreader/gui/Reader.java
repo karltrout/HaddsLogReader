@@ -6,7 +6,6 @@ package logreader.gui;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
-import javafx.beans.value.ObservableValue;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
 import javafx.event.ActionEvent;
@@ -14,7 +13,6 @@ import javafx.event.Event;
 import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
-import javafx.geometry.Rectangle2D;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Scene;
@@ -38,9 +36,9 @@ import javafx.stage.Stage;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
@@ -61,6 +59,14 @@ public class Reader extends Application {
     private ScheduledExecutorService scheduledPool;
     private SimpleStringProperty filePattern = new SimpleStringProperty("nas_[0-9]{2}\\.log");
     private boolean editingPattern = false;
+    private VBox fileLvlsVBox;
+    private VBox mbsLvlsVBox;
+    private Number incrementingMbsCount = 0;
+    private SimpleStringProperty totalMbs = new SimpleStringProperty("40.0");
+    private SimpleStringProperty mbsProcessed = new SimpleStringProperty("----");
+    private Number incrementingFilesCnt = 0;
+    private SimpleStringProperty totalFiles = new SimpleStringProperty("60.0");
+    private SimpleStringProperty filesProcessed = new SimpleStringProperty("----");
 
     @Override
     public void stop(){
@@ -156,16 +162,18 @@ public class Reader extends Application {
 
         HBox levelsTxt = new HBox();
 
-        VBox mbsVbox = new VBox();
-        mbsVbox.setAlignment(Pos.CENTER);
-        mbsVbox.setMinWidth(40);
+        VBox mbsCntVbox = new VBox();
+        mbsCntVbox.setAlignment(Pos.CENTER);
+        mbsCntVbox.setMinWidth(40);
         Text mbLvlTxt = new Text("# Mbs");
         mbLvlTxt.setFill(Color.WHITE);
         Text mbsTotalsTxt = new Text("----");
+        mbsTotalsTxt.textProperty().bind(this.totalMbs);
         mbsTotalsTxt.setFill(Color.WHITE);
         Text mbsProcessedTxt = new Text("----");
+        mbsProcessedTxt.textProperty().bind(mbsProcessed);
         mbsProcessedTxt.setFill(Color.WHITE);
-        mbsVbox.getChildren().addAll(mbLvlTxt, mbsTotalsTxt,mbsProcessedTxt);
+        mbsCntVbox.getChildren().addAll(mbLvlTxt, mbsTotalsTxt,mbsProcessedTxt);
 
         VBox fileCntVbox = new VBox();
         fileCntVbox.setAlignment(Pos.CENTER);
@@ -173,13 +181,15 @@ public class Reader extends Application {
         Text fileCntTxt = new Text("# Files");
         fileCntTxt.setFill(Color.WHITE);
         Text fileCntTotalTxt = new Text("----");
+        fileCntTotalTxt.textProperty().bind(this.totalFiles);
         fileCntTotalTxt.setFill(Color.WHITE);
         Text filesCountedTxt = new Text("----");
+        filesCountedTxt.textProperty().bind(filesProcessed);
         filesCountedTxt.setFill(Color.WHITE);
         fileCntVbox.getChildren().addAll(fileCntTxt, fileCntTotalTxt, filesCountedTxt);
 
         levelsTxt.setSpacing(5);
-        levelsTxt.getChildren().addAll(mbsVbox, fileCntVbox);
+        levelsTxt.getChildren().addAll(fileCntVbox, mbsCntVbox);
 
         HBox levelsHbox = new HBox();
         levelsHbox.minWidth(100);
@@ -187,8 +197,8 @@ public class Reader extends Application {
         levelsHbox.setSpacing(4);
         levelsHbox.setStyle("-fx-background-color:WHITE;");
 
-        VBox fileLvlsVBox = new VBox();
-        VBox mbsLvlsVBox = new VBox();
+        fileLvlsVBox = new VBox();
+        mbsLvlsVBox = new VBox();
         fileLvlsVBox.setSpacing(1);
         mbsLvlsVBox.setSpacing(1);
         mbsLvlsVBox.setFillWidth(true);
@@ -341,11 +351,62 @@ public class Reader extends Application {
         Runnable addDataToSeries = () ->{
                 int second = seconds.incrementAndGet();
                 System.out.println("Seconds :"+second);
-               Platform.runLater(()-> { series.getData().add(new XYChart.Data<>(second, Math.random()));});
+               Platform.runLater(()-> {
+                   Number random = Math.random();
+                   series.getData().add(new XYChart.Data<>(second, random));
+                   updateFileCnt(second);
+                   updateMbsProcessed(random);
+
+               });
         };
 
         scheduledPool = Executors.newScheduledThreadPool(1);
             scheduledPool.scheduleWithFixedDelay(addDataToSeries, 1, 1, TimeUnit.SECONDS);
+    }
+
+
+    private void updateMbsProcessed(Number random) {
+
+        incrementingMbsCount = incrementingMbsCount.doubleValue()+random.doubleValue();
+        this.mbsProcessed.set(String.format("%.2f",incrementingMbsCount));
+        Double lvlReached = incrementingMbsCount.intValue()/Double.valueOf(this.totalMbs.get())*15;
+        int counter = -1;
+        List<Node> levelBars = this.mbsLvlsVBox.getChildren();
+
+        for( int i = levelBars.size()-1; i >=0; i-- ){
+            if (counter < lvlReached) {
+                Node rec = levelBars.get(i);
+                ((Rectangle) rec).setFill(Color.ORANGERED);
+            }
+            counter++;
+        }
+
+    }
+
+    private void updateFileCnt(int numberOfFilesProcessed) {
+
+        incrementingFilesCnt = numberOfFilesProcessed; //tst purposes
+        filesProcessed.set(String.format("%d", incrementingFilesCnt));
+        Number lvlReached = ((incrementingFilesCnt.doubleValue()/Double.valueOf(this.totalFiles.get())) * 15.0);
+        int counter = 0;
+
+            List<Node> levelbars = this.fileLvlsVBox.getChildren();
+            for (int i = levelbars.size()-1; i >= 0; i--){
+
+            if (counter < lvlReached.intValue()) {
+
+                Node rec = levelbars.get(i);
+                ((Rectangle) rec).setFill(Color.LIMEGREEN);
+            }
+            counter++;
+        }
+        if (incrementingFilesCnt.intValue() >= 60
+                && !scheduledPool.isShutdown()){
+
+            scheduledPool.shutdown();
+
+        }
+
     }
 
     private Path chooseFile(Event event) {
