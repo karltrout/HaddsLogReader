@@ -208,7 +208,7 @@ public class Reader extends Application {
         fileLvlsVBox.setAlignment(Pos.BOTTOM_CENTER);
         mbsLvlsVBox.setAlignment(Pos.BOTTOM_CENTER);
 
-        for (int i : IntStream.range(1,16).toArray()) {
+        IntStream.range(1,16).forEach( (i) -> {
 
             Rectangle fileLvl1 = new Rectangle(0, 0);
             fileLvl1.setWidth(38);
@@ -217,8 +217,10 @@ public class Reader extends Application {
             fileLvl1.setStrokeWidth(.5);
             fileLvl1.setStroke(Color.BLACK);
             fileLvlsVBox.getChildren().add(fileLvl1);
-        }
-        for (int i : IntStream.range(1,16).toArray()) {
+
+        });
+
+        IntStream.range(1,16).forEach((i1) ->{
             Rectangle mbsLvl1 = new Rectangle(0, 0);
             mbsLvl1.setWidth(38);
             mbsLvl1.setHeight(15);
@@ -226,7 +228,7 @@ public class Reader extends Application {
             mbsLvl1.setStrokeWidth(.5);
             mbsLvl1.setStroke(Color.BLACK);
             mbsLvlsVBox.getChildren().add(mbsLvl1);
-        }
+        });
 
         levelsHbox.getChildren().addAll(fileLvlsVBox, mbsLvlsVBox);
 
