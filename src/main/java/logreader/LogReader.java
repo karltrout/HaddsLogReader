@@ -35,6 +35,7 @@ import static java.util.stream.Collectors.toList;
 public class LogReader {
 
     private static final Path outDirectory = Paths.get("/Users/karltrout/Documents/Resources/text/HADDS/");
+    private static Path rootDirectory = Paths.get("/Users/karltrout/Documents/Resources/hadds/");
     /**
      * @param args the command line arguments
      */
@@ -44,7 +45,6 @@ public class LogReader {
         List<Path> files = new ArrayList<>();
         int maxDepth = 10;
 
-        Path rootDirectory = Paths.get("/Users/karltrout/Documents/Resources/hadds/");
         String pattern = "nas_[0-9]{2}\\.log";
         Number totalBytesCollected = 0;
         Number proccessedBytes = 0;
@@ -103,8 +103,11 @@ public class LogReader {
 
             try {
 
-                HaddsLogFileParser hLogParser = new HaddsLogFileParser(p,outDirectory, totalBytes, totalFilesRead);
-                hLogParser.setTesting(true);
+               // String outFileName = p.getFileName().toString().replace(".log", "_flat.txt");
+                Path covertedFileDirectory = outDirectory.resolve(rootDirectory.relativize(p)).getParent();
+
+                HaddsLogFileParser hLogParser = new HaddsLogFileParser(p,covertedFileDirectory, totalBytes, totalFilesRead);
+                hLogParser.setTesting(false);
                 futures.add(executorService.submit(hLogParser));
 
             }catch (IOException ioe){
