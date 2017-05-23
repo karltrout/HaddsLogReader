@@ -43,7 +43,7 @@ public class HaddsLogFileParser implements Runnable {
         setOutputFile();
     }
 
-    HaddsLogFileParser(Path fileToParse, Path outputDirectory, AtomicLong counter, AtomicInteger filesRead) throws IOException {
+    public HaddsLogFileParser(Path fileToParse, Path outputDirectory, AtomicLong counter, AtomicInteger filesRead) throws IOException {
         this.path = fileToParse;
         this.outDirectory = outputDirectory;
         this.filesCounter = filesRead;
@@ -64,6 +64,8 @@ public class HaddsLogFileParser implements Runnable {
     public void run() {
         try {
 
+            System.out.println("processing file: "+this.path.toString());
+
             byte[] fileBytes = Files.readAllBytes(this.path);
             //int fileSize = fileBytes.length;
 
@@ -77,7 +79,20 @@ public class HaddsLogFileParser implements Runnable {
 
                 mId++;
                 Message message = new Message(mId);
+
+//                if (this.path.getFileName().toString().contains("nas_01") && message.messageId == 14){
+//                   this.byteCnt = this.byteCnt - 12;
+//                    System.out.println("testing");
+//                }
                 setTimeAndBlock(getBytes(12, fileBytes), message);
+                long time = Calendar.getInstance().getTimeInMillis();
+
+                //Bodge - Found Some messages do not contaion header information.
+                //if the timeStamp is unreasonable then reset the byte counter.
+                if (message.timeStamp*1000 > time ){
+                    System.out.println(">>ERROR<< Invalid Message timeStamp for message "+message.messageId+" In File "+path.toString() );
+                    this.byteCnt = this.byteCnt - 12;
+                }
 
                 getMessage(fileBytes,message);
                 messages.put(mId,message);
@@ -105,6 +120,10 @@ public class HaddsLogFileParser implements Runnable {
         } catch (IOException e) {
             e.printStackTrace();
         }
+        catch (IndexOutOfBoundsException exception){
+            System.out.println(this.path.getFileName().toString()+" threw a index out of bounds Exception!");
+           // exception.printStackTrace();
+        }
     }
 
     private byte[] getBytes(int numberOfBytes, byte[] fromArray){
@@ -118,6 +137,7 @@ public class HaddsLogFileParser implements Runnable {
     private static void setTimeAndBlock(byte[] bytes, Message message)
             throws UnsupportedEncodingException {
 
+        //String test = new String (bytes, "IBM-1047");
         long timeBytes = 0;
         for (int i = 0; i < 4; i++)
         {
@@ -158,7 +178,12 @@ public class HaddsLogFileParser implements Runnable {
 
     private void getMessage(byte[] bytes, Message message) {
 
+//        if (this.path.getFileName().toString().contains("nas_01") && message.messageId == 14){
+//            System.out.println("testing");
+//        }
+
         byte[] dst = getBytes(8, bytes);
+
 
         byte[] src = getBytes(8, bytes);
         int sz =((bytes[this.byteCnt++] & 0xff) << 8) | (bytes[this.byteCnt++] & 0xff);
@@ -171,6 +196,10 @@ public class HaddsLogFileParser implements Runnable {
             String source = new String(src, "IBM-1047");
             String typ = new String(type, "IBM-1047");
 
+//            if (this.path.getFileName().toString().contains("nas_01" ) && dest.contains("ZCS")){
+//                System.out.println("testing");
+//            }
+
             message.addHeader(source, dest, typ);
 
             int fieldByteSize = sz - 20 ; // header is 20 fileBytes long
@@ -182,23 +211,32 @@ public class HaddsLogFileParser implements Runnable {
 
     }
 
-    private static void getFields(byte[] bytes, Message message) throws UnsupportedEncodingException {
+    private void getFields(byte[] bytes, Message message) throws UnsupportedEncodingException {
         int dataSize = bytes.length;
         int b = 0;
-        while (dataSize > 0){
-            int fieldSize =((bytes[b++] & 0xff) << 8) | (bytes[b++] & 0xff);
+        try {
+            while (dataSize > 0) {
+                int fieldSize = ((bytes[b++] & 0xff) << 8) | (bytes[b++] & 0xff);
 
-            int fnum =((bytes[b++] & 0xff) << 8) | (bytes[b++] & 0xff);
+                int fnum = ((bytes[b++] & 0xff) << 8) | (bytes[b++] & 0xff);
 
-            String fvar = new String(Arrays.copyOfRange(bytes, b++, b), "IBM-1047");
+                String fvar = new String(Arrays.copyOfRange(bytes, b++, b), "IBM-1047");
 
-            byte[] fdata = Arrays.copyOfRange(bytes, b, b+fieldSize);
+                byte[] fdata = Arrays.copyOfRange(bytes, b, b + fieldSize);
 
-            message.addField(fnum, fvar, fdata);
-            b=b+fieldSize;
-            if (b == dataSize){
-                break ;
+//                String eof = new String(fdata, "IBM-1047");
+//                if (this.path.getFileName().toString().contains("nas_01") && message.messageId == 14){// && eof.equals("EOF")){
+//                    System.out.println("testing");
+//                }
+
+                message.addField(fnum, fvar, fdata);
+                b = b + fieldSize;
+                if (b == dataSize) {
+                    break;
+                }
             }
+        } catch (IndexOutOfBoundsException except){
+            except.printStackTrace();
         }
     }
 

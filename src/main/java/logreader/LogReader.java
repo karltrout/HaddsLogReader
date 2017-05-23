@@ -34,8 +34,8 @@ import static java.util.stream.Collectors.toList;
  */
 public class LogReader {
 
-    private static final Path outDirectory = Paths.get("/Users/karltrout/Documents/Resources/text/HADDS/");
-    private static Path rootDirectory = Paths.get("/Users/karltrout/Documents/Resources/hadds/");
+    private static final Path outDirectory = Paths.get("/Users/karltrout/Documents/Resources/text/HADDS/zse_test/");
+    private static Path rootDirectory = Paths.get("/Users/karltrout/Documents/Resources/hadds/zse/zsehadds2/2017/20170514/");
     /**
      * @param args the command line arguments
      */
@@ -48,6 +48,8 @@ public class LogReader {
         String pattern = "nas_[0-9]{2}\\.log";
         Number totalBytesCollected = 0;
         Number proccessedBytes = 0;
+
+        long startTime = Calendar.getInstance().getTimeInMillis();
 
         try (Stream<Path> stream = Files.walk(rootDirectory, maxDepth)) {
             files = stream
@@ -73,8 +75,13 @@ public class LogReader {
 
         runTest(totalBytesCollected, files);
 
+        long stopTime = Calendar.getInstance().getTimeInMillis();
+        Number time = (stopTime - startTime)/1000;
+        System.out.println("taskTime(secs) :"+time);
+    }
+
+    private static void runSingleFileTest() {
         Path aFilePath = Paths.get("/Users/karltrout/Documents/Resources/hadds/zdc/zdchadds1/2017/20170320/nas_01.log");
-        long startTime = Calendar.getInstance().getTimeInMillis();
 
         try {
 
@@ -84,10 +91,6 @@ public class LogReader {
         } catch (IOException e) {
             System.out.println("error Accessing File : Error -> "+e.getMessage());
         }
-
-        long stopTime = Calendar.getInstance().getTimeInMillis();
-        Number time = (stopTime - startTime)/1000;
-        System.out.println("taskTime(secs) :"+time);
     }
 
     private static void runTest(Number totalBytesCollected, List<Path> files) {

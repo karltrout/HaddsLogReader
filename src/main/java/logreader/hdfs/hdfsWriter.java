@@ -5,6 +5,8 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.io.IOUtils;
+import org.apache.spark.SparkConf;
+import org.apache.spark.api.java.JavaSparkContext;
 
 import java.io.*;
 import java.nio.file.Paths;
@@ -35,9 +37,11 @@ public class hdfsWriter implements Runnable {
         conf.addResource(new Path(core_site));
         conf.addResource(new Path(hdfs_site));
 
+        SparkConf sConf = new SparkConf();
         System.out.println("configured filesystem = " + conf.get(FS_PARAM_NAME));
 
         try(FileSystem fs = FileSystem.get(conf)) {
+
 
             if (fs.exists(outputPath)) {
                 System.err.println("output path exists");
@@ -49,11 +53,16 @@ public class hdfsWriter implements Runnable {
             }
             else return;
 
-           // OutputStream os = fs.create(outputPath);
+            JavaSparkContext sc = new JavaSparkContext(sConf);
 
-        //try (InputStream is = new BufferedInputStream(new FileInputStream(inputDirectory))) {
-           // IOUtils.copyBytes(is, os, conf);
-        //}
+            // OutputStream os = fs.create(outputPath);
+
+
+            //try (InputStream is = new BufferedInputStream(new FileInputStream(inputDirectory))) {
+
+            // IOUtils.copyBytes(is, os, conf);
+
+            //}
 
         }catch (IOException ioe){
 
