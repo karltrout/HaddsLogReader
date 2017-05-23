@@ -37,7 +37,10 @@ public class hdfsWriter implements Runnable {
         conf.addResource(new Path(core_site));
         conf.addResource(new Path(hdfs_site));
 
-        SparkConf sConf = new SparkConf();
+        SparkConf sConf = new SparkConf()
+                .setMaster("local[2]")
+                .setAppName("Hadds Processing");
+
         System.out.println("configured filesystem = " + conf.get(FS_PARAM_NAME));
 
         try(FileSystem fs = FileSystem.get(conf)) {
