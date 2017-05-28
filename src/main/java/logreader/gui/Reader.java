@@ -2,15 +2,15 @@ package logreader.gui;
 
 /**
  * Created by karltrout on 5/10/17.
+ * This is the Gui Interface to HADDS Binary Log File to Ascii File Processor.
  */
+
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.ListChangeListener;
 import javafx.collections.ObservableList;
-import javafx.event.ActionEvent;
 import javafx.event.Event;
-import javafx.event.EventHandler;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Cursor;
@@ -24,7 +24,10 @@ import javafx.scene.control.Label;
 import javafx.scene.control.TextField;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
-import javafx.scene.layout.*;
+import javafx.scene.layout.AnchorPane;
+import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.HBox;
+import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
@@ -32,16 +35,27 @@ import javafx.scene.text.FontWeight;
 import javafx.scene.text.Text;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
+import logreader.HaddsLogFileParser;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.time.Duration;
+import java.time.LocalTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.stream.IntStream;
+import java.util.stream.Stream;
+
+import static java.util.stream.Collectors.toList;
 
 public class Reader extends Application {
 
@@ -54,6 +68,7 @@ public class Reader extends Application {
 
     private final String labelFont = "Helvetica";
     private final int labelFontSize = 14;
+    private final int numberFontSize = 9;
     private final static Image writeImg = new Image("images/write_white.png",24,24,true,true, true);
     private final static Image writeHoverImg = new Image("images/write_light_gray.png",24,24,true,true, true);
     private ScheduledExecutorService scheduledPool;
@@ -61,12 +76,21 @@ public class Reader extends Application {
     private boolean editingPattern = false;
     private VBox fileLvlsVBox;
     private VBox mbsLvlsVBox;
+    //Counters
     private Number incrementingMbsCount = 0;
-    private SimpleStringProperty totalMbs = new SimpleStringProperty("40.0");
-    private SimpleStringProperty mbsProcessed = new SimpleStringProperty("----");
+    private SimpleStringProperty totalMbsTxt = new SimpleStringProperty("40.0");
+    private SimpleStringProperty mbsProcessedTxt = new SimpleStringProperty("----");
     private Number incrementingFilesCnt = 0;
-    private SimpleStringProperty totalFiles = new SimpleStringProperty("60.0");
-    private SimpleStringProperty filesProcessed = new SimpleStringProperty("----");
+    private SimpleStringProperty totalFilesTxt = new SimpleStringProperty("60.0");
+    private SimpleStringProperty filesProcessedTxt = new SimpleStringProperty("----");
+    private Button processBtn;
+    private Button loadBtn;
+
+    private List<Path> files = new ArrayList<>();
+
+    private AtomicLong totalBytes = new AtomicLong(0);
+    private AtomicInteger totalFilesRead = new AtomicInteger(0);
+    private ExecutorService executorService;
 
     @Override
     public void stop(){
@@ -75,19 +99,37 @@ public class Reader extends Application {
             scheduledPool.shutdownNow();
         }
 
+        if (executorService != null && !executorService.isShutdown() ){
+            executorService.shutdownNow();
+        }
+
+
     }
 
     @Override
     public void start(Stage primaryStage) {
 
-        Button btn = new Button();
-        btn.setText("Process!");
-        btn.setOnAction(new EventHandler<ActionEvent>() {
+        buildGui(primaryStage);
 
-            @Override
-            public void handle(ActionEvent event) {
-                System.out.println("Processing...");
+    }
+
+    private void buildGui(Stage primaryStage) {
+        processBtn = new Button();
+        processBtn.setText("Process!");
+        processBtn.setOnAction(event -> {
+            System.out.println("Processing...");
+            processFiles();
+        });
+        processBtn.setDisable(true);
+
+        loadBtn = new Button("Load");
+        loadBtn.setOnAction( event -> {
+            if(this.rootDirectoryString.getValue().isEmpty()){
+                //add message dialog here
+                System.out.println("Please select a root Directory to search for files.");
+                return;
             }
+            initializeData();
         });
 
         BorderPane rootLayout = new BorderPane();
@@ -103,7 +145,7 @@ public class Reader extends Application {
 
         HBox bottomHBox = new HBox();
         bottomHBox.setAlignment(Pos.BASELINE_RIGHT);
-        bottomHBox.getChildren().add(btn);
+        bottomHBox.getChildren().addAll(loadBtn,processBtn);
         bottomHBox.setPadding(new Insets(15, 12, 15, 12));
         bottomHBox.setSpacing(10);
         bottomHBox.setStyle("-fx-background-color: #336699;");
@@ -145,9 +187,40 @@ public class Reader extends Application {
         primaryStage.show();
 
         rootLayout.requestFocus();
+    }
 
-        startTest();
+    private void initializeData() {
 
+        resetData();
+        int maxDepth = 10;
+        Number totalBytesCollected;
+        String pattern = filePattern.getValue();
+
+        try (Stream<Path> stream = Files.walk(rootDirectoryPath, maxDepth)) {
+            files = stream
+                    .filter(path -> path.getFileName().toString().matches(pattern))
+                    .collect(toList());
+            totalBytesCollected =
+                    files.stream().mapToDouble(
+                            path -> {
+                                try {
+                                    return (Double.valueOf(Files.size(path)) / 1024 / 1024);
+                                } catch (IOException ioe) {
+                                    System.out.println("::Warning:: Missing File: " + path.toString());
+                                    return 0;
+                                }
+                            }).sum();
+
+            System.out.println(String.format("Total file size to process: %.2f Mb", totalBytesCollected.doubleValue()));
+            this.totalMbsTxt.set(String.format("%.2f", totalBytesCollected.doubleValue()));
+            this.totalFilesTxt.set(String.format("%d", files.size()));
+
+            this.processBtn.setDisable(false);
+
+        }
+        catch (IOException e) {
+            e.printStackTrace();
+        }
     }
 
     private VBox getLevelsHBox() {
@@ -168,10 +241,12 @@ public class Reader extends Application {
         Text mbLvlTxt = new Text("# Mbs");
         mbLvlTxt.setFill(Color.WHITE);
         Text mbsTotalsTxt = new Text("----");
-        mbsTotalsTxt.textProperty().bind(this.totalMbs);
+        mbsTotalsTxt.setFont(Font.font(labelFont, FontWeight.LIGHT, numberFontSize));
+        mbsTotalsTxt.textProperty().bind(this.totalMbsTxt);
         mbsTotalsTxt.setFill(Color.WHITE);
         Text mbsProcessedTxt = new Text("----");
-        mbsProcessedTxt.textProperty().bind(mbsProcessed);
+        mbsProcessedTxt.setFont(Font.font(labelFont, FontWeight.LIGHT, numberFontSize));
+        mbsProcessedTxt.textProperty().bind(this.mbsProcessedTxt);
         mbsProcessedTxt.setFill(Color.WHITE);
         mbsCntVbox.getChildren().addAll(mbLvlTxt, mbsTotalsTxt,mbsProcessedTxt);
 
@@ -181,10 +256,12 @@ public class Reader extends Application {
         Text fileCntTxt = new Text("# Files");
         fileCntTxt.setFill(Color.WHITE);
         Text fileCntTotalTxt = new Text("----");
-        fileCntTotalTxt.textProperty().bind(this.totalFiles);
+        fileCntTotalTxt.setFont(Font.font(labelFont, FontWeight.LIGHT, numberFontSize));
+        fileCntTotalTxt.textProperty().bind(this.totalFilesTxt);
         fileCntTotalTxt.setFill(Color.WHITE);
         Text filesCountedTxt = new Text("----");
-        filesCountedTxt.textProperty().bind(filesProcessed);
+        filesCountedTxt.setFont(Font.font(labelFont, FontWeight.LIGHT, numberFontSize));
+        filesCountedTxt.textProperty().bind(filesProcessedTxt);
         filesCountedTxt.setFill(Color.WHITE);
         fileCntVbox.getChildren().addAll(fileCntTxt, fileCntTotalTxt, filesCountedTxt);
 
@@ -347,68 +424,97 @@ public class Reader extends Application {
 
     }
 
-    private void startTest() {
+//    private void startTest() {
+//
+//        resetData();
+//        AtomicInteger seconds = new AtomicInteger(0);
+//        Runnable addDataToSeries = () ->{
+//                int second = seconds.incrementAndGet();
+//                System.out.println("Seconds :"+second);
+//               Platform.runLater(()-> {
+//                   Number random = Math.random();
+//                   series.getData().add(new XYChart.Data<>(second, random));
+//                   updateFileCnt(second);
+//                   updateMbsProcessed(random);
+//
+//               });
+//        };
+//
+//        scheduledPool = Executors.newScheduledThreadPool(1);
+//            scheduledPool.scheduleWithFixedDelay(addDataToSeries, 1, 1, TimeUnit.SECONDS);
+//    }
 
-        AtomicInteger seconds = new AtomicInteger(0);
-        Runnable addDataToSeries = () ->{
-                int second = seconds.incrementAndGet();
-                System.out.println("Seconds :"+second);
-               Platform.runLater(()-> {
-                   Number random = Math.random();
-                   series.getData().add(new XYChart.Data<>(second, random));
-                   updateFileCnt(second);
-                   updateMbsProcessed(random);
+    private void resetData() {
 
-               });
-        };
+        series.getData().clear();
+        incrementingMbsCount = 0;
+        fillmbsLvlBox(0.0);
+        incrementingFilesCnt = 0;
 
-        scheduledPool = Executors.newScheduledThreadPool(1);
-            scheduledPool.scheduleWithFixedDelay(addDataToSeries, 1, 1, TimeUnit.SECONDS);
+        fillFileLvlMeter(0.0);
+        mbsProcessedTxt.set(String.format("%.2f",incrementingMbsCount.floatValue()));
+        filesProcessedTxt.set(String.format("%d", incrementingFilesCnt.intValue()));
+
+        totalFilesRead.set(0);
+        totalBytes.set(0);
+
     }
 
 
-    private void updateMbsProcessed(Number random) {
+    private void updateMbsProcessed(Number currentMbsProcessed) {
 
-        incrementingMbsCount = incrementingMbsCount.doubleValue()+random.doubleValue();
-        this.mbsProcessed.set(String.format("%.2f",incrementingMbsCount));
-        Double lvlReached = incrementingMbsCount.intValue()/Double.valueOf(this.totalMbs.get())*15;
-        int counter = -1;
+        incrementingMbsCount = currentMbsProcessed;
+        this.mbsProcessedTxt.set(String.format("%.2f",incrementingMbsCount.floatValue()));
+        Double lvlReached = incrementingMbsCount.intValue()/Double.valueOf(this.totalMbsTxt.get())*15;
+        fillmbsLvlBox(lvlReached);
+
+    }
+
+    private void fillmbsLvlBox(Double lvlReached) {
+        int counter = 0;
         List<Node> levelBars = this.mbsLvlsVBox.getChildren();
 
         for( int i = levelBars.size()-1; i >=0; i-- ){
+
+            Node rec = levelBars.get(i);
+
             if (counter < lvlReached) {
-                Node rec = levelBars.get(i);
                 ((Rectangle) rec).setFill(Color.ORANGERED);
+            }
+            else {
+                ((Rectangle) rec).setFill(Color.valueOf("475058"));
             }
             counter++;
         }
-
     }
 
     private void updateFileCnt(int numberOfFilesProcessed) {
 
         incrementingFilesCnt = numberOfFilesProcessed; //tst purposes
-        filesProcessed.set(String.format("%d", incrementingFilesCnt));
-        Number lvlReached = ((incrementingFilesCnt.doubleValue()/Double.valueOf(this.totalFiles.get())) * 15.0);
+        filesProcessedTxt.set(String.format("%d", incrementingFilesCnt.intValue()));
+        Number lvlReached = ((incrementingFilesCnt.doubleValue()/Double.valueOf(this.totalFilesTxt.get())) * 15.0);
+        fillFileLvlMeter(lvlReached);
+
+
+    }
+
+    private void fillFileLvlMeter(Number lvlReached) {
         int counter = 0;
 
-            List<Node> levelbars = this.fileLvlsVBox.getChildren();
-            for (int i = levelbars.size()-1; i >= 0; i--){
+        List<Node> levelbars = this.fileLvlsVBox.getChildren();
 
+        for (int i = levelbars.size() - 1; i >= 0; i--) {
+
+            Node rec = levelbars.get(i);
             if (counter < lvlReached.intValue()) {
-
-                Node rec = levelbars.get(i);
                 ((Rectangle) rec).setFill(Color.LIMEGREEN);
             }
+            else {
+                ((Rectangle) rec).setFill(Color.valueOf("475058"));
+            }
             counter++;
-        }
-        if (incrementingFilesCnt.intValue() >= 60
-                && !scheduledPool.isShutdown()){
-
-            scheduledPool.shutdown();
 
         }
-
     }
 
     private Path chooseFile(Event event) {
@@ -444,33 +550,121 @@ public class Reader extends Application {
         final NumberAxis yAxis = new NumberAxis();
         final AreaChart<Number,Number> ac =
                 new AreaChart<>(xAxis,yAxis);
-        ac.setTitle("Data Monitoring (in Megabytes Mb)");
+        ac.setTitle("Data Processed(Mb)");
         ac.setStyle("-fx-text-fill: #FFFFFF;");
 
-        series= new XYChart.Series();
+        series= new XYChart.Series<>();
         series.setName("Read");
 
         series.getData().addListener(
-                new ListChangeListener<XYChart.Data<Number, Number>>() {
-
-                    @Override
-                    public void onChanged(
-                            ListChangeListener.Change<? extends XYChart.Data<Number, Number>> arg0) {
-                        ObservableList<XYChart.Data<Number, Number>> data = series
-                                .getData();
+                (ListChangeListener<XYChart.Data<Number, Number>>) arg0 -> {
+                    ObservableList<XYChart.Data<Number, Number>> data = series
+                            .getData();
+                    if (data.size() > 0) {
                         xAxis.setLowerBound(data.get(0).getXValue()
                                 .doubleValue());
                         xAxis.setUpperBound(data.get(data.size() - 1)
                                 .getXValue().doubleValue());
                     }
-
                 });
 
         ac.getData().addAll(series);
         return ac;
     }
 
+
+    private  void processFiles() {
+
+        resetData();
+        processBtn.setDisable(true);
+        loadBtn.setDisable(true);
+
+
+        executorService = Executors.newFixedThreadPool(4);
+
+        //executorService = Executors.newSingleThreadExecutor();
+//        executorService =
+//                new ThreadPoolExecutor(
+//                        4,
+//                        4,
+//                        5000L,
+//                        TimeUnit.MILLISECONDS,
+//                        new LinkedBlockingDeque<>());
+
+        LocalTime start = LocalTime.now();
+
+        for(Path p : files){
+            try {
+                Path covertedFileDirectory = outDirectoryPath.resolve(rootDirectoryPath.relativize(p)).getParent();
+                HaddsLogFileParser hLogParser = new HaddsLogFileParser(p,covertedFileDirectory, totalBytes, totalFilesRead);
+                hLogParser.setTesting(false);
+                executorService.submit(hLogParser);
+            }catch (IOException ioe){
+                ioe.printStackTrace();
+            }
+
+        }
+
+        try{
+            final AtomicInteger seconds = new AtomicInteger(0);
+            final AtomicLong lastRead = new AtomicLong(0);
+            Runnable addDataToSeries = () ->{
+                int second = seconds.incrementAndGet();
+                long localLastRead = lastRead.get();
+                long currentRead = totalBytes.get() - localLastRead;
+                lastRead.set( localLastRead + currentRead);
+                double mbsProcessed = this.totalBytes.doubleValue()/1024/1024;
+                this.updateMbsProcessed(mbsProcessed);
+                this.updateFileCnt(totalFilesRead.get());
+                double mbsProcessedRate = (Double.valueOf(currentRead)/1024/1024)*10;
+                System.out.println(
+                        String.format("Running for : %.2f Secs. Mbs read: %.2f of %s from %d file(s) | Mb/sec. : %.2f",
+                                second/10.0,
+                                mbsProcessed,
+                                this.totalMbsTxt,
+                                totalFilesRead.get(),
+                                mbsProcessedRate));
+
+                Platform.runLater(()-> {
+                   ObservableList<XYChart.Data<Number, Number>> data = series.getData();
+                   if (series.getData().size() >= 300){
+                        series.getData().remove(0);
+                   }
+                    series.getData().add(new XYChart.Data<>((second/10.0), mbsProcessedRate));
+                });
+
+                if (incrementingFilesCnt.intValue() >= Integer.valueOf(this.totalFilesTxt.get())
+                        && !scheduledPool.isShutdown()){
+
+                    try {
+                        scheduledPool.awaitTermination(100, TimeUnit.MILLISECONDS);
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                    }
+
+                    scheduledPool.shutdown();
+
+                    System.out.println("shutingDown the scheduled Thread.");
+                    loadBtn.setDisable(false);
+
+                }
+
+            };
+
+            scheduledPool = Executors.newScheduledThreadPool(1);
+            scheduledPool.scheduleWithFixedDelay(addDataToSeries, 100, 100, TimeUnit.MILLISECONDS);
+
+        } catch (Exception e){
+            e.printStackTrace();
+        }
+
+        Duration duration = Duration.between(start, LocalTime.now());
+        System.out.println("Total Duration to read files: "+duration);
+
+    }
+
     public static void main(String[] args) {
         launch(args);
     }
+
 }
